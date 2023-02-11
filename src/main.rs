@@ -15,7 +15,6 @@ use pnet::packet::udp::UdpPacket;
 use pnet::packet::Packet;
 
 use pnet::transport::{TransportSender, TransportChannelType, TransportProtocol};
-//use pnet::util::MacAddr;
 
 use std::env;
 use std::io::{self, Write};
@@ -101,7 +100,7 @@ fn main() {
         .next()
         .unwrap_or_else(|| panic!("No such network interface: {}", rx_iface_name));
 
-    // Create a channel to receive on
+    // Create a data link channel to receive on
     let (_, mut rx) = match datalink::channel(&rx_interface, Default::default()) {
         Ok(Ethernet(tx, rx)) => (tx, rx),
         Ok(_) => panic!("packetdump: unhandled channel type"),
@@ -119,13 +118,12 @@ fn main() {
     println!("Monitoring {} for Gluion packets.", rx_interface.name);
 
     loop {
-        //let mut buf: [u8; 1600] = [0u8; 1600];
         match rx.next() {
             Ok(packet) => {
                 // got new packet on the interface, try to process it
                 handle_ethernet_frame(&mut tx, &EthernetPacket::new(packet).unwrap(), test);
             }
-            Err(e) => panic!("glrelay: unable to receive packet: {}", e),
+            Err(e) => panic!("glrelay: failed to receive packet: {}", e),
         }
     }
 }
