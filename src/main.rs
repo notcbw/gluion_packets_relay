@@ -27,6 +27,7 @@ fn handle_udp_packet(tx: &mut TransportSender, packet: &[u8], dest: IpAddr) {
 
     if let Some(udp) = udp {
         let dest_port = udp.get_destination();
+        // send the udp packet with no change through the transport layer sender
         match tx.send_to(udp, dest) {
             Ok(udpsize) => println!("Relayed a packet of size {} to {}:{}", udpsize, dest, dest_port),
             Err(e) => println!("Failed to relay packet: {}", e.to_string()),
@@ -41,7 +42,7 @@ fn handle_ipv4_packet(tx: &mut TransportSender, ethernet: &EthernetPacket) {
     let header = Ipv4Packet::new(ethernet.payload());
     if let Some(header) = header {
         if header.get_next_level_protocol() == IpNextHeaderProtocols::Udp {
-            return handle_udp_packet(tx, header.payload(), IpAddr::V4(header.get_destination()));
+            handle_udp_packet(tx, header.payload(), IpAddr::V4(header.get_destination()));
         }
     } else {
         println!("Malformed IPv4 Packet");
@@ -55,7 +56,7 @@ fn handle_ethernet_frame(tx: &mut TransportSender, ethernet: &EthernetPacket, te
         if test || (src_octets[0] == 0x05
             && src_octets[1] == 0xe2
             && src_octets[2] == 0x87) {
-            return handle_ipv4_packet(tx, ethernet);
+            handle_ipv4_packet(tx, ethernet);
         }
     }
 }
