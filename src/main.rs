@@ -9,44 +9,41 @@ extern crate pnet;
 use pnet::datalink::{self, NetworkInterface, DataLinkSender};
 
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket, MutableEthernetPacket};
-use pnet::packet::ip::{IpNextHeaderProtocols};
-use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::{Packet, MutablePacket};
 
 use std::env;
 use std::io::{self, Write};
 use std::process;
 
-fn handle_ipv4_packet(tx: &mut Box<dyn DataLinkSender>, ethernet: &EthernetPacket) {
-    let header = Ipv4Packet::new(ethernet.payload());
-    if let Some(header) = header {
-        // if packet is udp, fix the source address of the ethernet packet then relay.
-        if header.get_next_level_protocol() == IpNextHeaderProtocols::Udp {
-            tx.build_and_send(1, ethernet.packet().len(), 
-                &mut |new_packet| {
-                    // attempt to clone the old ethernet packet
-                    let mut new_packet = MutableEthernetPacket::new(new_packet).unwrap();
-                    new_packet.clone_from(ethernet);
-
-                    // fix the source address
-                    let mut src_mac = new_packet.get_source();
-                    src_mac.0 &= 0xfe;
-                    new_packet.set_source(src_mac);
-                });
-        }
-    } else {
-        println!("Malformed IPv4 Packet");
-    }
-}
-
 fn handle_ethernet_frame(tx: &mut Box<dyn DataLinkSender>, ethernet: &EthernetPacket, test: bool) {
-    if ethernet.get_ethertype() == EtherTypes::Ipv4 {
+    if ethernet.get_ethertype() == EtherTypes::Ipv4 ||
+        ethernet.get_ethertype() == EtherTypes::Arp {
+        // For all ipv4 or arp packets, 
         // If the MAC address matches the gluion magic, pass the content to handle_ipv4_packet
         let src_octets = ethernet.get_source().octets();
         if test || (src_octets[0] == 0x05
             && src_octets[1] == 0xe2
             && src_octets[2] == 0x87) {
-            handle_ipv4_packet(tx, ethernet);
+            match tx.build_and_send(1, ethernet.packet().len(), 
+            &mut |new_packet| {
+                // attempt to clone the old ethernet packet
+                let mut new_packet = MutableEthernetPacket::new(new_packet).unwrap();
+                new_packet.clone_from(ethernet);
+
+                // fix the source address
+                let mut src_mac = new_packet.get_source();
+                src_mac.0 &= 0xfe;
+                new_packet.set_source(src_mac);
+            }) {
+                Some(n) => {
+                    match n {
+                        Ok(_) => println!("Gluion packet relayed to {}!", ethernet.get_destination()),
+                        Err(e) => println!("Failed to relay gluion packet to {}: {}", ethernet.get_destination(), e.to_string()),
+                    }
+                },
+                None => println!("New packet size error????"),
+            }
+
         }
     }
 }
