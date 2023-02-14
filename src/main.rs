@@ -58,7 +58,7 @@ fn handle_ethernet_frame(
 
                             // fix the source address
                             let mut src_mac = new_packet.get_source();
-                            src_mac.0 &= 0xfe;
+                            src_mac.0 &= 0xff;
                             new_packet.set_source(src_mac);
                         }) {
                             Some(n) => match n {
@@ -89,7 +89,7 @@ fn handle_ethernet_frame(
 fn bad_argument() {
     writeln!(
         io::stderr(),
-        "USAGE: glrelay <RX NETWORK INTERFACE> <TX NETWORK INTERFACE>"
+        "USAGE: glrelay <RX NETWORK INTERFACE>"
     )
     .unwrap();
     write!(io::stderr(), "Available interfaces: ").unwrap();
@@ -99,13 +99,6 @@ fn bad_argument() {
     write!(io::stderr(), "\n").unwrap();
 }
 
-#[cfg(not(target_family = "unix"))]
-fn main() {
-    writeln!(io::stderr(), "Non *nix OSes are not supported!").unwrap();
-    process::exit(1);
-}
-
-#[cfg(target_family = "unix")]
 fn main() {
     use pnet::datalink::Channel::Ethernet;
 
