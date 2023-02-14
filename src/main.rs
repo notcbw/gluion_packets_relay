@@ -89,7 +89,7 @@ fn handle_ethernet_frame(
 fn bad_argument() {
     writeln!(
         io::stderr(),
-        "USAGE: glrelay <RX NETWORK INTERFACE>"
+        "USAGE: glrelay <RX NETWORK INTERFACE> <TAP1>,<TAP2>,<TAP3>,<TAP4>,<TAP5>,<TAP6>"
     )
     .unwrap();
     write!(io::stderr(), "Available interfaces: ").unwrap();
@@ -102,6 +102,8 @@ fn bad_argument() {
 fn main() {
     use pnet::datalink::Channel::Ethernet;
 
+    const TEST: bool = false;
+
     // get rx interface name from argument
     let rx_iface_name = match env::args().nth(1) {
         Some(n) => n,
@@ -112,19 +114,42 @@ fn main() {
     };
     let rx_if_names_match = |rx_iface: &NetworkInterface| rx_iface.name == rx_iface_name;
 
-    // check test flag
-    let test: bool = match env::args().nth(2) {
+    // get a list of comma separated list of tap devices. Use default tap1~6 if not found.
+    let ni_taps: [NetworkInterface; 6] = match env::args().nth(2) {
         Some(n) => {
-            if n.eq_ignore_ascii_case("test") {
-                true
-            } else {
-                false
-            }
-        }
-        None => false,
-    };
-    if test {
-        println!("Test mode enabled: MAC address filtering is disabled.")
+            let taps_names: Vec<&str> = n.split(",").collect();
+            core::array::from_fn::<NetworkInterface, 6, _>(|i| {
+                if let Some(tx_iface_name) = taps_names.get(i) {
+                    let tx_iface_name = tx_iface_name.to_string();
+                    let tx_if_names_match =
+                        |tx_iface: &NetworkInterface| tx_iface.name == tx_iface_name;
+                    let interfaces = datalink::interfaces();
+                    let tx_interface = interfaces
+                        .into_iter()
+                        .filter(tx_if_names_match)
+                        .next()
+                        .unwrap_or_else(|| panic!("Cannot find {}! ", tx_iface_name));
+                    return tx_interface;
+                } else {
+                    bad_argument();
+                    panic!("Please enter exactly 6 tap interfaces separated by commas!");
+                }
+            })
+        },
+        None => {
+            core::array::from_fn::<NetworkInterface, 6, _>(|i| {
+                let tx_iface_name = format!("tap{:1}", i + 1);
+                let tx_if_names_match =
+                    |tx_iface: &NetworkInterface| tx_iface.name == tx_iface_name;
+                let interfaces = datalink::interfaces();
+                let tx_interface = interfaces
+                    .into_iter()
+                    .filter(tx_if_names_match)
+                    .next()
+                    .unwrap_or_else(|| panic!("Cannot find {}! ", tx_iface_name));
+                return tx_interface;
+            })
+        },
     };
 
     // Find the network interface with the provided name
@@ -143,18 +168,18 @@ fn main() {
     };
 
     // put all NetworkInterface in an array for tap1~6
-    let ni_taps: [NetworkInterface; 6] = core::array::from_fn(|i| {
-        let tx_iface_name = format!("tap{:1}", i + 1);
-        let tx_if_names_match =
-            |tx_iface: &NetworkInterface| tx_iface.name == tx_iface_name;
-        let interfaces = datalink::interfaces();
-        let tx_interface = interfaces
-            .into_iter()
-            .filter(tx_if_names_match)
-            .next()
-            .unwrap_or_else(|| panic!("Cannot find {}! ", tx_iface_name));
-        return tx_interface;
-    });
+    // let ni_taps: [NetworkInterface; 6] = core::array::from_fn(|i| {
+    //     let tx_iface_name = format!("tap{:1}", i + 1);
+    //     let tx_if_names_match =
+    //         |tx_iface: &NetworkInterface| tx_iface.name == tx_iface_name;
+    //     let interfaces = datalink::interfaces();
+    //     let tx_interface = interfaces
+    //         .into_iter()
+    //         .filter(tx_if_names_match)
+    //         .next()
+    //         .unwrap_or_else(|| panic!("Cannot find {}! ", tx_iface_name));
+    //     return tx_interface;
+    // });
 
     // Create an array of data link channel for all tap interfaces
     let mut tx_taps: [Box<dyn DataLinkSender>; 6] = core::array::from_fn(|i| {
@@ -173,7 +198,7 @@ fn main() {
         match rx.next() {
             Ok(packet) => {
                 // got new packet on the interface, try to process it
-                handle_ethernet_frame(&mut tx_taps, &EthernetPacket::new(packet).unwrap(), test);
+                handle_ethernet_frame(&mut tx_taps, &EthernetPacket::new(packet).unwrap(), TEST);
             }
             Err(e) => panic!("glrelay: failed to receive packet: {}", e),
         }
