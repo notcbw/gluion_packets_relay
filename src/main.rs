@@ -149,9 +149,8 @@ fn main() {
         Err(e) => panic!("unable to create RX data link channel: {}", e),
     };
 
-    // put all NetworkInterface in a vector for tap1~6
-    let mut ni_taps: Vec<NetworkInterface> = Vec::with_capacity(6);
-    for i in 0..5 {
+    // put all NetworkInterface in an array for tap1~6
+    let ni_taps: [NetworkInterface; 6] = core::array::from_fn(|i| {
         let tx_iface_name = format!("tap{:1}", i + 1);
         let tx_if_names_match =
             |tx_iface: &NetworkInterface| tx_iface.name == tx_iface_name;
@@ -161,13 +160,12 @@ fn main() {
             .filter(tx_if_names_match)
             .next()
             .unwrap_or_else(|| panic!("Cannot find {}! ", tx_iface_name));
-        ni_taps.insert(i, tx_interface);
-    }
-    let ni_taps = ni_taps;
+        return tx_interface;
+    });
 
     // Create an array of data link channel for all tap interfaces
     let mut tx_taps: [Box<dyn DataLinkSender>; 6] = core::array::from_fn(|i| {
-        let (tx, _) = match datalink::channel(&ni_taps.get(i).unwrap(), Default::default()) {
+        let (tx, _) = match datalink::channel(&ni_taps[i], Default::default()) {
             Ok(Ethernet(tx, rx)) => (tx, rx),
             Ok(_) => panic!("unhandled channel type"),
             Err(e) => panic!("unable to create TX data link channel: {}", e),
